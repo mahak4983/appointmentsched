@@ -1,0 +1,76 @@
+{
+    "rooms": {
+        "deluxe": {
+            "price": 2000,
+            "number": 5
+        },
+        "standard": {
+            "price": 1500,
+            "number": 5
+        },
+        "suite": {
+            "price": 2500,
+            "number": 5
+        }
+    },
+    "bookings": [
+        {
+            "Name": "Raghav",
+            "Aadhaar": 672161221,
+            "Room": "deluxe",
+            "Check-in date": "2024-02-15",
+            "Check-out date": "2024-02-17",
+            "Duration": 2,
+            "Amount": 4000
+        },
+        {
+            "Name": "SUMIT BAHETY",
+            "Aadhaar": "1234568",
+            "Room": "deluxe",
+            "Check-in date": "2024-02-19",
+            "Check-out date": "2024-02-21",
+            "Duration": 2,
+            "Amount": 4000
+        },
+        {
+            "Name": "JIMMY",
+            "Phone Number": "whatsapp:+918017797696",
+            "Aadhaar": "1234354563452",
+            "Room": "standard",
+            "Check-in date": "2024-12-12",
+            "Check-out date": "2024-12-15",
+            "Duration": 3,
+            "Amount": 4500
+        },
+        {
+            "Name": "RAGHAV B",
+            "Phone Number": "whatsapp:+918017797696",
+            "Aadhaar": "1233456787654",
+            "Room": "standard",
+            "Check-in date": "2024-12-14",
+            "Check-out date": "2024-12-17",
+            "Duration": 3,
+            "Amount": 4500
+        },
+        {
+            "Name": "DUMMY",
+            "Phone Number": "whatsapp:+918017797696",
+            "Aadhaar": "1234567890",
+            "Room": "suite",
+            "Check-in date": "2024-02-18",
+            "Check-out date": "2024-02-21",
+            "Duration": 3,
+            "Amount": 7500
+        },
+        {
+            "Name": "MAHAK",
+            "Phone Number": "whatsapp:+918777714983",
+            "Aadhaar": "1234567890",
+            "Room": "deluxe",
+            "Check-in date": "2000-12-12",
+            "Check-out date": "2000-12-13",
+            "Duration": 1,
+            "Amount": 2000
+        }
+    ]
+}
