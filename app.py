@@ -7,20 +7,40 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 import requests
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from datetime import datetime, timedelta
 from database import DataStore
 import urllib.parse
 import re
+from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
+app.config.from_object('config.Config')
+
+db = SQLAlchemy(app)
 client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
 
-database = DataStore()
+
+class Appointments(db.Model):
+    __tablename__ = 'appointments'
+
+    name = db.Column(db.String(100), primary_key=True)
+    number = db.Column(db.String(15), primary_key=True)
+    appointmentStatus = db.Column(db.Enum('yes', 'no'), nullable=False)
+    appointmentDate = db.Column(db.String(10), nullable=False)
+    appointmentTime = db.Column(db.String(8), nullable=False)
+    doctor = db.Column(db.String(100), nullable=False)
+    ailment = db.Column(db.String(255))
+    location = db.Column(db.String(255), nullable=False)
+
+    def __repr__(self):
+        return f'<Appointment {self.name} - {self.number}>'
 
 # Sheet Integration
 scopes = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -73,16 +93,21 @@ headers = {
 
 def check_number_in_sheet(number):
     # Get all values in the first column (assuming numbers are stored in the first column)
-    numbers_in_sheet = workbook.sheet1.col_values(2)
+    # numbers_in_sheet = workbook.sheet1.col_values(2)
 
-    # Extract last 10 digits from the provided number
-    last_10_digits = number[-10:]
+    # # Extract last 10 digits from the provided number
+    # last_10_digits = number[-10:]
     
-    for num in numbers_in_sheet:
-        if num[-10:] == last_10_digits:
-            return True  # Number is found in the sheet
+    # for num in numbers_in_sheet:
+    #     if num[-10:] == last_10_digits:
+    #         return True  # Number is found in the sheet
 
-    return False
+    # return False
+    appointment = Appointments.query.filter_by(number=number).first()
+    if appointment:
+        return True
+    else:
+        return False
 
 
 def find_available_slots(date_str):
@@ -126,6 +151,25 @@ def check_appointment_status(number):
     else:
         return "Number not found in the sheet"
 
+
+@app.route('/appointments')
+def get_appointments():
+    # Query the appointments table
+    appointments = Appointments.query.all()
+    results = []
+    for appointment in appointments:
+        result = {
+            "name": appointment.name,
+            "number": appointment.number,
+            "appointmentStatus": appointment.appointmentStatus,
+            "appointmentDate": appointment.appointmentDate,
+            "appointmentTime": appointment.appointmentTime,
+            "doctor": appointment.doctor,
+            "ailment": appointment.ailment,
+            "location": appointment.location
+        }
+        results.append(result)
+    return jsonify(results)
 
 @app.route('/message', methods=['POST'])
 def reply():
@@ -190,8 +234,20 @@ def reply():
                             url, data=encoded_data, headers=headers)
                         #Chane this
                     else: 
-                       row_to_add = [name_value, sender_number, 'no']
-                       sheet.append_row(row_to_add)
+                    #    row_to_add = [name_value, sender_number, 'no']
+                    #    sheet.append_row(row_to_add)
+                       new_appointment = Appointments(
+                        name=name_value,
+                        number=sender_number,
+                        appointmentStatus='no',
+                        appointmentDate='',  # You need to set this or handle appropriately
+                        appointmentTime='',  # You need to set this or handle appropriately
+                        doctor='',           # You need to set this or handle appropriately
+                        ailment='',          # You can set this as None if nullable
+                        location=''          # You need to set this or handle appropriately
+                       )
+                       db.session.add(new_appointment)
+                       db.session.commit()
                        data_schedule_clinic = {
                            'channel': 'whatsapp',
                            'source': '917834811114',
@@ -642,6 +698,61 @@ def reply():
 
                 # Parse the JSON message from the data dictionary
                 print(data)
+                input_string = user_responses[sender_number]['date']+ ', ' + user_responses[sender_number]['time'] 
+                match = re.match(
+                    r'(\d{1,2}), (\w+), (\d{1,2})([AP]M)-(\d{1,2})([AP]M)', input_string)
+
+                if match:
+                    day_str = match.group(1)
+                    month_str = match.group(2)
+                    start_time_str = match.group(3) + match.group(4)
+                    end_time_str = match.group(5) + match.group(6)
+                else:
+                    print("Invalid input format.")
+                    exit()
+
+                # Convert month string to month number
+                month_dict = {'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
+                              'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12}
+                if month_str in month_dict:
+                    month = month_dict[month_str]
+                else:
+                    print("Invalid month.")
+                    exit()
+
+                # Convert date, start time, and end time strings to datetime objects
+                event_date = datetime(
+                    year=datetime.now().year, month=month, day=int(day_str))
+                start_time = datetime.strptime(start_time_str, '%I%p')
+                end_time = datetime.strptime(end_time_str, '%I%p')
+
+                # Update date and time with parsed values
+                event_start = event_date.replace(
+                    hour=start_time.hour if start_time.hour != 12 else 0, minute=start_time.minute)
+                event_end = event_date.replace(
+                    hour=end_time.hour if end_time.hour != 12 else 0, minute=end_time.minute)
+                print(event_start.isoformat())
+                attendees = ['resuwise@gmail.com', 'mahak4983@gmail.com']
+
+                # Define event details
+                event = {
+                    'summary': f' Appointment with {sender_number}',
+                    'start': {
+                        'dateTime': event_start.isoformat(),
+                        'timeZone': 'Asia/Kolkata',  # Specify your timezone
+                    },
+                    'end': {
+                        'dateTime': event_end.isoformat(),
+                        'timeZone': 'Asia/Kolkata',
+                    },
+                     #'attendees': [{'email': email} for email in attendees],
+                }
+
+                # Insert the event into Google Calendar
+                created_event = service_calendar.events().insert(
+                    calendarId='resuwise@gmail.com', body=event).execute()
+
+                print('Event created:', created_event.get('htmlLink'))
                 response = requests.post(
                     url, data=data, headers=headers)
                 values = sheet.get_all_values()
@@ -712,60 +823,7 @@ def reply():
                         break
                 user_stage[sender_number] = CONVERSATION_STAGES['START']
                 # print()
-                # match = re.match(
-                #     r'(\d{1,2}), (\w+), (\d{1,2})([AP]M)-(\d{1,2})([AP]M)', input_string)
 
-
-                # if match:
-                #     day_str = match.group(1)
-                #     month_str = match.group(2)
-                #     start_time_str = match.group(3) + match.group(4)
-                #     end_time_str = match.group(5) + match.group(6)
-                # else:
-                #     print("Invalid input format.")
-                #     exit()
-
-                # # Convert month string to month number
-                # month_dict = {'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
-                #             'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12}
-                # if month_str in month_dict:
-                #     month = month_dict[month_str]
-                # else:
-                #     print("Invalid month.")
-                #     exit()
-
-                # # Convert date, start time, and end time strings to datetime objects
-                # event_date = datetime(year=datetime.now().year, month=month, day=int(day_str))
-                # start_time = datetime.strptime(start_time_str, '%I%p')
-                # end_time = datetime.strptime(end_time_str, '%I%p')
-
-                # # Update date and time with parsed values
-                # event_start = event_date.replace(
-                #     hour=start_time.hour if start_time.hour != 12 else 0, minute=start_time.minute)
-                # event_end = event_date.replace(
-                #     hour=end_time.hour if end_time.hour != 12 else 0, minute=end_time.minute)
-                # print(event_start.isoformat())
-                # attendees = ['resuwise@gmail.com','mahak4983@gmail.com']
-
-                # # Define event details
-                # event = {
-                #     'summary': 'Your Event Summary',
-                #     'start': {
-                #         'dateTime': event_start.isoformat(),
-                #         'timeZone': 'Asia/Kolkata',  # Specify your timezone
-                #     },
-                #     'end': {
-                #         'dateTime': event_end.isoformat(),
-                #         'timeZone': 'Asia/Kolkata',
-                #     },
-                #     # 'attendees': [{'email': email} for email in attendees],
-                # }
-
-                # # Insert the event into Google Calendar
-                # created_event = service_calendar.events().insert(
-                #     calendarId='primary', body=event).execute()
-
-                # print('Event created:', created_event.get('htmlLink'))
 
 
         
@@ -786,4 +844,4 @@ def reply():
     return str(response)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=3000)
