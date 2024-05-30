@@ -63,6 +63,9 @@ service_calendar = build('calendar', 'v3', credentials=creds_calendar)
 CONVERSATION_STAGES = {
     'START': 'start',
     'VALIDATE_YES_NO': 'validate_yes_no',
+    'VALIDATE_SCHED_OR_OTHER': 'validate_sched_or_other',
+    'SCHEDULE_OTHERS': 'schedule_others',
+    'ENTER_NAME': 'enter_name',
     'SCHED_APPOINT_DATE': 'sched_appoint_DATE',
     'SCHED_APPOINT_TIME': 'sched_appoint_time',
     'DOCTOR': 'doctor',
@@ -236,30 +239,30 @@ def reply():
                     else: 
                     #    row_to_add = [name_value, sender_number, 'no']
                     #    sheet.append_row(row_to_add)
-                       new_appointment = Appointments(
-                        name=name_value,
-                        number=sender_number,
-                        appointmentStatus='no',
-                        appointmentDate='',  # You need to set this or handle appropriately
-                        appointmentTime='',  # You need to set this or handle appropriately
-                        doctor='',           # You need to set this or handle appropriately
-                        ailment='',          # You can set this as None if nullable
-                        location=''          # You need to set this or handle appropriately
-                       )
-                       db.session.add(new_appointment)
-                       db.session.commit()
+                    #    new_appointment = Appointments(
+                    #     name=name_value,
+                    #     number=sender_number,
+                    #     appointmentStatus='no',
+                    #     appointmentDate='',  # You need to set this or handle appropriately
+                    #     appointmentTime='',  # You need to set this or handle appropriately
+                    #     doctor='',           # You need to set this or handle appropriately
+                    #     ailment='',          # You can set this as None if nullable
+                    #     location=''          # You need to set this or handle appropriately
+                    #    )
+                    #    db.session.add(new_appointment)
+                    #    db.session.commit()
                        data_schedule_clinic = {
                            'channel': 'whatsapp',
                            'source': '917834811114',
                            'destination': f'{sender_number}',
-                           'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"How would you like to continue","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}}]}}',
+                           'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"How would you like to continue","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule for other"}}]}}',
                            'src.name': 'schedulingbot',
                        }
                        encoded_data = urllib.parse.urlencode(
                            data_schedule_clinic)
                        response = requests.post(
                            url, data=encoded_data, headers=headers)
-                       user_stage[sender_number] = CONVERSATION_STAGES['LOCATION']
+                       user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']
 
 
                 elif data_dict['payload']['payload']['title'].lower() == 'no':   
@@ -289,6 +292,43 @@ def reply():
                 response = requests.post(
                     url, data=encoded_data, headers=headers)
                 user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
+        elif current_stage == CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']: 
+            if data_dict['payload']['type'] == 'button_reply':
+                if data_dict['payload']['payload']['title'].lower() == 'Schedule Appointment':
+                    data = {
+                        "channel": "whatsapp",
+                        "source": "917834811114",
+                        "destination": f'{sender_number}',
+                        "src.name": "schedulingbot",
+                        'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
+                    }
+                    user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
+                elif data_dict['payload']['payload']['title'].lower() == 'Schedule for other':
+                    data = {
+                        'channel': 'whatsapp',
+                        'source': '917834811114',
+                        'destination': '91',
+                        'message': '{"type":"text","text":"Enter Name"}',
+                        'src.name': 'schedulingbot',
+                    }
+                    user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
+                encoded_data = urllib.parse.urlencode(data)
+                response = requests.post(
+                    url, data=encoded_data, headers=headers)
+                
+        elif current_stage == CONVERSATION_STAGES['ENTER_NAME']: 
+            print(data_dict)
+            data = {
+                "channel": "whatsapp",
+                "source": "917834811114",
+                "destination": f'{sender_number}',
+                "src.name": "schedulingbot",
+                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
+            }
+            encoded_data = urllib.parse.urlencode(data)
+            response = requests.post(
+                url, data=encoded_data, headers=headers)
+            user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
         elif current_stage == CONVERSATION_STAGES['LOCATION']:
             if data_dict['payload']['type'] == 'button_reply':
                 data = {
@@ -844,4 +884,4 @@ def reply():
     return str(response)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=3000)
+    app.run(debug=True, port=8080)
