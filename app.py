@@ -302,6 +302,7 @@ def reply():
                         "src.name": "schedulingbot",
                         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
                     }
+                    encoded_data = urllib.parse.urlencode(data)
                     user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
                 elif data_dict['payload']['payload']['title'].lower() == 'Schedule for other':
                     data = {
@@ -312,7 +313,7 @@ def reply():
                         'src.name': 'schedulingbot',
                     }
                     user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
-                encoded_data = urllib.parse.urlencode(data)
+                    encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
                     url, data=encoded_data, headers=headers)
                 
