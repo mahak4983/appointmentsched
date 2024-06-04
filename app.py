@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 from datetime import datetime, timedelta
@@ -16,6 +16,9 @@ import urllib.parse
 import re
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_session import Session
+import uuid
 
 load_dotenv()
 
@@ -24,20 +27,31 @@ CORS(app)
 app.config.from_object('config.Config')
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+app.config['SESSION_SQLALCHEMY'] = db
+
+Session(app)
 client = Client(os.getenv('TWILIO_ACCOUNT_SID'), os.getenv('TWILIO_AUTH_TOKEN'))
 
 
 class Appointments(db.Model):
     __tablename__ = 'appointments'
 
+
+    _id = db.Column(db.String(36), primary_key=True, default=str(uuid.uuid4()))
     name = db.Column(db.String(100), primary_key=True)
     number = db.Column(db.String(15), primary_key=True)
     appointmentStatus = db.Column(db.Enum('yes', 'no'), nullable=False)
-    appointmentDate = db.Column(db.String(10), nullable=False)
+    appointmentDate = db.Column(db.String(10), primary_key=True)
     appointmentTime = db.Column(db.String(8), nullable=False)
     doctor = db.Column(db.String(100), nullable=False)
     ailment = db.Column(db.String(255))
     location = db.Column(db.String(255), nullable=False)
+    date = db.Column(db.String(20), nullable=False)
+    time = db.Column(db.String(8), nullable=False)
+    _createdDate = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    _updatedDate = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    _owner = db.Column(db.String(100))
 
     def __repr__(self):
         return f'<Appointment {self.name} - {self.number}>'
@@ -64,6 +78,7 @@ CONVERSATION_STAGES = {
     'START': 'start',
     'VALIDATE_YES_NO': 'validate_yes_no',
     'VALIDATE_SCHED_OR_OTHER': 'validate_sched_or_other',
+    'RESCHEDULE_OR_BOOKFOROTHERS': 'reschedule_or_bookforothers',
     'SCHEDULE_OTHERS': 'schedule_others',
     'ENTER_NAME': 'enter_name',
     'SCHED_APPOINT_DATE': 'sched_appoint_DATE',
@@ -81,6 +96,7 @@ CONVERSATION_STAGES = {
 user_stage = {}
 user_responses = {}
 sheet_data = sheet.get_all_values()
+appointmentArray = {}
 
 # list to store all the data
 data = []
@@ -106,7 +122,8 @@ def check_number_in_sheet(number):
     #         return True  # Number is found in the sheet
 
     # return False
-    appointment = Appointments.query.filter_by(number=number).first()
+    appointment = Appointments.query.filter_by(number=number).all()
+    
     if appointment:
         return True
     else:
@@ -115,6 +132,13 @@ def check_number_in_sheet(number):
 
 def find_available_slots(date_str):
     print(date_str)
+    appointments = Appointments.query.with_entities(
+        Appointments.appointmentTime).filter_by(appointmentDate=date_str).all()
+
+    # Extract the appointment times from the results
+    appointment_times = [
+        appointment.appointmentTime for appointment in appointments]
+    print(appointment_times)
     date_cell_list = []
     time_values_notbooked=[]
     # Find rows with the provided date in the format '03, May'
@@ -130,9 +154,43 @@ def find_available_slots(date_str):
     for i in range(len(time_range) - 1):  # Exclude the last slot as it's the end time
     # Generate time slot string
         time_slot = f'{time_range[i]}-{time_range[i + 1]}'
-        if time_slot not in date_cell_list:  # Check if the time slot is not booked
+        if time_slot not in appointment_times:  # Check if the time slot is not booked
             time_values_notbooked.append(time_slot)
     return time_values_notbooked
+
+
+def extract_start_time(time_range_str):
+    # Split the string by the hyphen and strip any extra spaces
+    start_time = time_range_str.split('-')[0].strip()
+    return start_time
+
+
+def convert_date(date_str):
+    # Define the month mappings
+    month_map = {
+        "January": "01",
+        "February": "02",
+        "March": "03",
+        "April": "04",
+        "May": "05",
+        "June": "06",
+        "July": "07",
+        "August": "08",
+        "September": "09",
+        "October": "10",
+        "November": "11",
+        "December": "12"
+    }
+
+    # Split the input string
+    day, month = date_str.split(', ')
+    day = day.zfill(2)  # Ensure day is two digits
+    month_num = month_map[month]  # Get the numerical month
+    year = datetime.now().year  # Get the current year
+
+    # Format the date
+    formatted_date = f"{year}:{month_num}:{day}"
+    return formatted_date
 
 
 def check_appointment_status(number):
@@ -140,19 +198,49 @@ def check_appointment_status(number):
     # Replace 'Your Google Sheet Name' with your actual sheet name
    
 
-    # Get all values in the first column (assuming numbers are stored in the first column)
-    numbers_in_sheet = sheet.col_values(2)
+    # # Get all values in the first column (assuming numbers are stored in the first column)
+    # numbers_in_sheet = sheet.col_values(2)
 
-    # Find the index of the number in the sheet
-    if number in numbers_in_sheet:
-        index = numbers_in_sheet.index(number)
-        # Get the appointment status from the 3rd column (index 2 in Python)
-        # Adding 1 because Google Sheets index starts from 1
-        appointment_status = sheet.cell(index + 1, 3).value
-        print(appointment_status)
-        return appointment_status
-    else:
-        return "Number not found in the sheet"
+    # # Find the index of the number in the sheet
+    # if number in numbers_in_sheet:
+    #     index = numbers_in_sheet.index(number)
+    #     # Get the appointment status from the 3rd column (index 2 in Python)
+    #     # Adding 1 because Google Sheets index starts from 1
+    #     appointment_status = sheet.cell(index + 1, 3).value
+    #     print(appointment_status)
+    #     return appointment_status
+    # else:
+    #     return "Number not found in the sheet"
+    appointments_list = []
+    appointments = Appointments.query.filter_by(
+        number=number, appointmentStatus='yes').all()
+    
+    if not appointments: 
+        return False
+
+    for appointment in appointments:
+        result = {
+            "name": appointment.name,
+            "number": appointment.number,
+            "appointmentStatus": appointment.appointmentStatus,
+            "appointmentDate": appointment.appointmentDate,
+            "appointmentTime": appointment.appointmentTime,
+            "doctor": appointment.doctor,
+            "ailment": appointment.ailment,
+            "location": appointment.location
+        }
+        appointments_list.append(result)
+        # print(appointments_list)
+    session[f'appointments_{number}'] = appointments_list
+    appointmentArray[number] = {
+        'appointments': appointments_list,
+        'index': 0
+    }
+
+    # print(appointmentArray)
+    
+    return True
+
 
 
 @app.route('/appointments')
@@ -176,6 +264,7 @@ def get_appointments():
 
 @app.route('/message', methods=['POST'])
 def reply():
+    global name_value
     response = None
     # response = requests.post(url, data=encoded_data, headers=headers)
     raw_data = request.get_data(as_text=True)
@@ -193,32 +282,34 @@ def reply():
         sender_number=data_dict.get("payload", {}).get("sender", {}).get("phone")
         current_stage = user_stage.get(
             sender_number, CONVERSATION_STAGES['START'])
-        name_value = data_dict.get("payload", {}).get("sender", {}).get("name")
+        
+        # if current_stage == CONVERSATION_STAGES['START']:
+        #     name_value = data_dict.get("payload", {}).get(
+        #         "sender", {}).get("name")
+        #     data_yes_no = {
+        #         'channel': 'whatsapp',
+        #         'source': '917834811114',
+        #         'destination': f'{sender_number}',
+        #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Hi {name_value}, We are excited to welcome you to ABC Clinic! Are you reaching out for appointment on your {sender_number} number","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}',
+        #         'src.name': 'schedulingbot',
+        #     }
+        #     encoded_data = urllib.parse.urlencode(data_yes_no)
+        #     response = requests.post(url, data=encoded_data, headers=headers)
+        #     user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
         if current_stage == CONVERSATION_STAGES['START']:
-            data_yes_no = {
-                'channel': 'whatsapp',
-                'source': '917834811114',
-                'destination': f'{sender_number}',
-                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Hi {name_value}, We are excited to welcome you to ABC Clinic! Are you reaching out for appointment on your {sender_number} number","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}',
-                'src.name': 'schedulingbot',
-            }
-            encoded_data = urllib.parse.urlencode(data_yes_no)
-            response = requests.post(url, data=encoded_data, headers=headers)
-            user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
-        elif current_stage == CONVERSATION_STAGES['VALIDATE_YES_NO']:
-            if data_dict['payload']['type'] == 'button_reply':
-                if data_dict['payload']['payload']['title'].lower() == 'yes':
+            # if data_dict['payload']['type'] == 'button_reply':
+                # if data_dict['payload']['payload']['title'].lower() == 'yes':
                     if check_number_in_sheet(sender_number): 
-                        if(check_appointment_status(sender_number).lower()=='yes'):
-                            print("active")
+                        if(check_appointment_status(sender_number)):
+                            # print("active")
                             data_schedule_clinic = {
                                 'channel': 'whatsapp',
                                 'source': '917834811114',
                                 'destination': f'{sender_number}',
-                                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"It looks like you have an upcoming appointment with us. How may we assist you further?","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"ReSchedule"}},{{"type":"text","title":"Talk to Clinic"}}]}}',
+                                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"It looks like you have an upcoming appointment with us. How may we assist you further?","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"ReSchedule"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule Appointment"}}]}}',
                                 'src.name': 'schedulingbot',
                             }
-                            user_stage[sender_number] = CONVERSATION_STAGES['RESCHED_APPOINT_DATE']
+                            user_stage[sender_number] = CONVERSATION_STAGES['RESCHEDULE_OR_BOOKFOROTHERS']
                             
                             
                         else:  
@@ -229,7 +320,7 @@ def reply():
                            'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Welcome back! How would you like to continue","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}}]}}',
                            'src.name': 'schedulingbot',
                             }
-                            user_stage[sender_number] = CONVERSATION_STAGES['LOCATION']
+                            user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']
                             
                         encoded_data = urllib.parse.urlencode(
                             data_schedule_clinic)
@@ -237,20 +328,6 @@ def reply():
                             url, data=encoded_data, headers=headers)
                         #Chane this
                     else: 
-                    #    row_to_add = [name_value, sender_number, 'no']
-                    #    sheet.append_row(row_to_add)
-                    #    new_appointment = Appointments(
-                    #     name=name_value,
-                    #     number=sender_number,
-                    #     appointmentStatus='no',
-                    #     appointmentDate='',  # You need to set this or handle appropriately
-                    #     appointmentTime='',  # You need to set this or handle appropriately
-                    #     doctor='',           # You need to set this or handle appropriately
-                    #     ailment='',          # You can set this as None if nullable
-                    #     location=''          # You need to set this or handle appropriately
-                    #    )
-                    #    db.session.add(new_appointment)
-                    #    db.session.commit()
                        data_schedule_clinic = {
                            'channel': 'whatsapp',
                            'source': '917834811114',
@@ -265,63 +342,81 @@ def reply():
                        user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']
 
 
-                elif data_dict['payload']['payload']['title'].lower() == 'no':   
-                    data = {
-                        "channel": "whatsapp",
-                        "source": "917834811114",
-                        "destination": f'{sender_number}',
-                        "src.name": "schedulingbot",
-                        "message": {
-                            "type": "text",
-                            "text": "Please Contact the Clinic for other queries!"
-                        }
-                    }
-                    encoded_data = urllib.parse.urlencode(data)
-                    response = requests.post(
-                        url, data=encoded_data, headers=headers)
-                    user_stage[sender_number] = CONVERSATION_STAGES['SCHED_APPOINT_DATE']
-            else:
-                data = {
-                    "channel": "whatsapp",
-                    "source": "917834811114",
-                    "destination": f'{sender_number}',
-                    "src.name": "schedulingbot",
-                    'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Invalid Format","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}'
-                }
-                encoded_data = urllib.parse.urlencode(data)
-                response = requests.post(
-                    url, data=encoded_data, headers=headers)
-                user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
+                # elif data_dict['payload']['payload']['title'].lower() == 'no':   
+                #     data = {
+                #         "channel": "whatsapp",
+                #         "source": "917834811114",
+                #         "destination": f'{sender_number}',
+                #         "src.name": "schedulingbot",
+                #         "message": {
+                #             "type": "text",
+                #             "text": "Please Contact the Clinic for other queries!"
+                #         }
+                #     }
+                #     encoded_data = urllib.parse.urlencode(data)
+                #     response = requests.post(
+                #         url, data=encoded_data, headers=headers)
+                #     user_stage[sender_number] = CONVERSATION_STAGES['SCHED_APPOINT_DATE']
+            # else:
+            #     data = {
+            #         "channel": "whatsapp",
+            #         "source": "917834811114",
+            #         "destination": f'{sender_number}',
+            #         "src.name": "schedulingbot",
+            #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Invalid Format","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}'
+            #     }
+            #     encoded_data = urllib.parse.urlencode(data)
+            #     response = requests.post(
+            #         url, data=encoded_data, headers=headers)
+            #     user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
         elif current_stage == CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']: 
             if data_dict['payload']['type'] == 'button_reply':
-                if data_dict['payload']['payload']['title'].lower() == 'Schedule Appointment':
-                    data = {
-                        "channel": "whatsapp",
-                        "source": "917834811114",
-                        "destination": f'{sender_number}',
-                        "src.name": "schedulingbot",
-                        'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
-                    }
-                    encoded_data = urllib.parse.urlencode(data)
-                    user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
-                elif data_dict['payload']['payload']['title'].lower() == 'Schedule for other':
-                    data = {
-                        'channel': 'whatsapp',
-                        'source': '917834811114',
-                        'destination': '91',
-                        'message': '{"type":"text","text":"Enter Name"}',
-                        'src.name': 'schedulingbot',
-                    }
-                    user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
-                    encoded_data = urllib.parse.urlencode(data)
+                # print(data_dict['payload']['payload']['title'].lower())
+                # if data_dict['payload']['payload']['title'].lower() == 'schedule appointment':
+                    
+                #     data = {
+                #         "channel": "whatsapp",
+                #         "source": "917834811114",
+                #         "destination": f'{sender_number}',
+                #         "src.name": "schedulingbot",
+                #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
+                #     }
+                #     encoded_data = urllib.parse.urlencode(data)
+                #     user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
+                # elif data_dict['payload']['payload']['title'].lower() == 'schedule for other':
+                # print(data_dict['payload']['payload']['title'].lower())
+                data = {
+                    'channel': 'whatsapp',
+                    'source': '917834811114',
+                    'destination': f'{sender_number}',
+                    'message': '{"type":"text","text":"Enter Name"}',
+                    'src.name': 'schedulingbot',
+                }
+                user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
+                encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
                     url, data=encoded_data, headers=headers)
                 
         elif current_stage == CONVERSATION_STAGES['ENTER_NAME']: 
-            print(data_dict)
+            
+            name_value = data_dict['payload']['payload']['text']
+            if sender_number in user_responses:
+                    # Access the value associated with sender_number and update 'date' if it exists in the inner dictionary
+                    inner_dict = user_responses[sender_number]
+                    if 'name' in inner_dict:
+                        inner_dict['name'] = data_dict['payload']['payload']['text']
+                    else:
+                        # If 'date' doesn't exist, add it to the inner dictionary
+                        inner_dict['name'] = data_dict['payload']['payload']['text']
+
+            else:
+                # If sender_number doesn't exist, create a new entry with 'date'
+                user_responses[sender_number] = {
+                    'name': data_dict['payload']['payload']['text']}
+            # print(name_value)
             data = {
                 "channel": "whatsapp",
-                "source": "917834811114",
+                "source": "917834811114", 
                 "destination": f'{sender_number}',
                 "src.name": "schedulingbot",
                 'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
@@ -330,6 +425,48 @@ def reply():
             response = requests.post(
                 url, data=encoded_data, headers=headers)
             user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
+        elif current_stage == CONVERSATION_STAGES['RESCHEDULE_OR_BOOKFOROTHERS']:
+            if data_dict['payload']['payload']['title'] == 'ReSchedule':
+                # Access the global variable
+                appointments = appointmentArray[sender_number]['appointments']
+                # print(appointmentArray[sender_number])
+                options = [{"type": "text", "title": f'{appointment["name"]} {appointment["appointmentDate"]}'}
+                           for appointment in appointments]
+                
+                data = {
+                    'channel': 'whatsapp',
+                    'source': '917834811114',
+                    'destination': f'{sender_number}',
+                    'message': '{"type": "list", "title": "Select Date", "body": "Click Main Menu", "globalButtons": [{"type": "text", "title": "Date Picker"}], "items": [{"title": "first Section", "subtitle": "first Subtitle", "options": []}]}',
+                    'src.name': 'schedulingbot',
+                }
+                message_data = json.loads(data['message'])
+                for appointment_option in options:
+                    message_data["items"][0]["options"].append(appointment_option)
+                
+                updated_message = json.dumps(message_data)
+
+    # Update the 'message' key in the data dictionary with the updated JSON message
+                data['message'] = updated_message
+                # print(data)
+                encoded_data = urllib.parse.urlencode(data)
+                response = requests.post(
+                    url, data=encoded_data, headers=headers)
+                user_stage[sender_number] = CONVERSATION_STAGES['RESCHED_APPOINT_DATE']
+            elif data_dict['payload']['payload']['title'] == 'Schedule Appointment':
+                data = {
+                    'channel': 'whatsapp',
+                    'source': '917834811114',
+                    'destination': f'{sender_number}',
+                    'message': '{"type":"text","text":"Enter Name"}',
+                    'src.name': 'schedulingbot',
+                }
+                user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
+                encoded_data = urllib.parse.urlencode(data)
+                response = requests.post(
+                    url, data=encoded_data, headers=headers)
+
+                
         elif current_stage == CONVERSATION_STAGES['LOCATION']:
             if data_dict['payload']['type'] == 'button_reply':
                 data = {
@@ -359,7 +496,7 @@ def reply():
                     # If sender_number doesn't exist, create a new entry with 'date'
                     user_responses[sender_number] = {
                         'location': data_dict['payload']['payload']['title']}
-                print(user_responses[sender_number]['location'])
+                # print(user_responses[sender_number]['location'])
                 data = {
                     "channel": "whatsapp",
                     "source": "917834811114",
@@ -387,7 +524,7 @@ def reply():
                     # If sender_number doesn't exist, create a new entry with 'date'
                     user_responses[sender_number] = {
                         'doctor': data_dict['payload']['payload']['title']}
-                print(user_responses[sender_number]['doctor'])
+                # print(user_responses[sender_number]['doctor'])
                 data = {
                     "channel": "whatsapp",
                     "source": "917834811114",
@@ -403,7 +540,7 @@ def reply():
 
         elif current_stage == CONVERSATION_STAGES['SCHED_APPOINT_DATE']: 
             if data_dict['payload']['type'] == 'list_reply':
-                
+                # print(data_dict)
                 if sender_number in user_responses:
                     # Access the value associated with sender_number and update 'date' if it exists in the inner dictionary
                     inner_dict = user_responses[sender_number] 
@@ -417,7 +554,7 @@ def reply():
                     # If sender_number doesn't exist, create a new entry with 'date'
                     user_responses[sender_number] = {
                         'ailment': data_dict['payload']['payload']['title']}
-                print(user_responses[sender_number]['ailment'])
+                # print(user_responses[sender_number]['ailment'])
                 data = {
                     'channel': 'whatsapp',
                     'source': '917834811114',
@@ -453,6 +590,7 @@ def reply():
 
                 # Update the 'message' key in the data dictionary with the updated JSON message
                 data['message'] = updated_message
+                # print(data)
                 encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
                 url, data=encoded_data, headers=headers)
@@ -488,7 +626,7 @@ def reply():
                     # If sender_number doesn't exist, create a new entry with 'date'
                     user_responses[sender_number] = {
                         'date': data_dict['payload']['payload']['title']}
-                print(data_dict['payload']['payload']['title'])
+                # print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
                     'source': '917834811114',
@@ -553,6 +691,15 @@ def reply():
                     url, data=encoded_data, headers=headers)
                 user_stage[sender_number] = CONVERSATION_STAGES['CONFIRM_BOOKING']
         elif current_stage == CONVERSATION_STAGES['RESCHED_APPOINT_DATE']:
+                reply = data_dict.get('payload', {}).get(
+                    'payload', {}).get('reply', '')
+
+    # Extract the last digit from the reply string using regex
+                match = re.findall(r'\d', reply)
+                
+                index = int(match[-1])
+                appointmentArray[sender_number]['index'] = index-1
+
             # if data_dict['payload']['type'] == 'button_reply':
 
             #     if sender_number in user_responses:
@@ -637,7 +784,7 @@ def reply():
                     # If sender_number doesn't exist, create a new entry with 'date'
                     user_responses[sender_number] = {
                         'date': data_dict['payload']['payload']['title']}
-                print(data_dict['payload']['payload']['title'])
+                # print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
                     'source': '917834811114',
@@ -797,6 +944,20 @@ def reply():
                 response = requests.post(
                     url, data=data, headers=headers)
                 values = sheet.get_all_values()
+                new_appointment = Appointments(
+                name=user_responses[sender_number]['name'],
+                number=sender_number,
+                appointmentStatus='yes',
+                appointmentDate=dynamic_date,  # You need to set this or handle appropriately
+                appointmentTime=dynamic_time,  # You need to set this or handle appropriately
+                doctor=doctor,           # You need to set this or handle appropriately
+                ailment=ailment,          # You can set this as None if nullable
+                location=location,
+                date= convert_date(dynamic_date),          # You need to set this or handle appropriately
+                time = extract_start_time(dynamic_time)
+                )
+                db.session.add(new_appointment)
+                db.session.commit()
                 for row_num, row_values in enumerate(values, start=1):
                     if row_values and row_values[1] == sender_number:
                         # Update the value in the 3rd column (index 2) to 'yes'
@@ -849,8 +1010,17 @@ def reply():
 
                 # Parse the JSON message from the data dictionary
                 print(data)
+                index = appointmentArray[sender_number]['index']
+                appointment = Appointments.query.filter_by(
+                    name=appointmentArray[sender_number]['appointments'][index]['name'], number=sender_number, appointmentDate=appointmentArray[sender_number]['appointments'][index]['appointmentDate']).first()
+                appointment.appointmentDate = dynamic_date
+                appointment.appointmentTime = dynamic_time
+                appointment.date = convert_date(dynamic_date)
+                appointment.time = extract_start_time(dynamic_time)
+                db.session.commit()
                 response = requests.post(
                     url, data=data, headers=headers)
+                
                 values = sheet.get_all_values()
                 for row_num, row_values in enumerate(values, start=1):
                     if row_values and row_values[1] == sender_number:
