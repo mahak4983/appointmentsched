@@ -43,11 +43,11 @@ class Appointments(db.Model):
     number = db.Column(db.String(15), primary_key=True)
     appointmentStatus = db.Column(db.Enum('yes', 'no'), nullable=False)
     appointmentDate = db.Column(db.String(10), primary_key=True)
-    appointmentTime = db.Column(db.String(8), nullable=False)
+    appointmentTime = db.Column(db.String(10), nullable=False)
     doctor = db.Column(db.String(100), nullable=False)
     ailment = db.Column(db.String(255))
     location = db.Column(db.String(255), nullable=False)
-    date = db.Column(db.String(20), nullable=False)
+    date = db.Column(db.Date, nullable=False)
     time = db.Column(db.String(8), nullable=False)
     _createdDate = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     _updatedDate = db.Column(db.DateTime, onupdate=datetime.utcnow)
@@ -184,12 +184,10 @@ def convert_date(date_str):
 
     # Split the input string
     day, month = date_str.split(', ')
-    day = day.zfill(2)  # Ensure day is two digits
-    month_num = month_map[month]  # Get the numerical month
-    year = datetime.now().year  # Get the current year
-
-    # Format the date
-    formatted_date = f"{year}:{month_num}:{day}"
+    day = day.zfill(2)
+    month_num = month_map[month]
+    year = datetime.now().year
+    formatted_date = f"{year}-{month_num}-{day}"
     return formatted_date
 
 
