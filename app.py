@@ -262,7 +262,6 @@ def get_appointments():
 
 @app.route('/message', methods=['POST'])
 def reply():
-    global name_value
     response = None
     # response = requests.post(url, data=encoded_data, headers=headers)
     raw_data = request.get_data(as_text=True)
@@ -278,6 +277,7 @@ def reply():
     # Print or use the extracted value
     if type_value == "message":
         sender_number=data_dict.get("payload", {}).get("sender", {}).get("phone")
+        name_value = data_dict.get("payload", {}).get("sender", {}).get("name")
         current_stage = user_stage.get(
             sender_number, CONVERSATION_STAGES['START'])
         
@@ -286,7 +286,7 @@ def reply():
         #         "sender", {}).get("name")
         #     data_yes_no = {
         #         'channel': 'whatsapp',
-        #         'source': '917834811114',
+        #         'source': '918583019562',
         #         'destination': f'{sender_number}',
         #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Hi {name_value}, We are excited to welcome you to ABC Clinic! Are you reaching out for appointment on your {sender_number} number","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}',
         #         'src.name': 'schedulingbot',
@@ -302,9 +302,9 @@ def reply():
                             # print("active")
                             data_schedule_clinic = {
                                 'channel': 'whatsapp',
-                                'source': '917834811114',
+                                'source': '918583019562',
                                 'destination': f'{sender_number}',
-                                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"It looks like you have an upcoming appointment with us. How may we assist you further?","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"ReSchedule"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule Appointment"}}]}}',
+                                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Hi {name_value}! It looks like you have an upcoming appointment with us. How may we assist you further?","caption":"Please choose an option:"}},"options":[{{"type":"text","title":"ReSchedule"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule Appointment"}}]}}',
                                 'src.name': 'schedulingbot',
                             }
                             user_stage[sender_number] = CONVERSATION_STAGES['RESCHEDULE_OR_BOOKFOROTHERS']
@@ -313,7 +313,7 @@ def reply():
                         else:  
                             data_schedule_clinic = {
                            'channel': 'whatsapp',
-                           'source': '917834811114',
+                           'source': '918583019562',
                            'destination': f'{sender_number}',
                            'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Welcome back! How would you like to continue","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}}]}}',
                            'src.name': 'schedulingbot',
@@ -328,9 +328,9 @@ def reply():
                     else: 
                        data_schedule_clinic = {
                            'channel': 'whatsapp',
-                           'source': '917834811114',
+                           'source': '918583019562',
                            'destination': f'{sender_number}',
-                           'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"How would you like to continue","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule for other"}}]}}',
+                           'message': f'{{"type": "quick_reply", "content": {{"type": "text", "text": "Hi There!\\n Welcome to Clinic XXX\\n How can we help you today?\\n","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Schedule Appointment"}},{{"type":"text","title":"Talk to Clinic"}},{{"type":"text","title":"Schedule for other"}}]}}',
                            'src.name': 'schedulingbot',
                        }
                        encoded_data = urllib.parse.urlencode(
@@ -343,7 +343,7 @@ def reply():
                 # elif data_dict['payload']['payload']['title'].lower() == 'no':   
                 #     data = {
                 #         "channel": "whatsapp",
-                #         "source": "917834811114",
+                #         "source": "918583019562",
                 #         "destination": f'{sender_number}',
                 #         "src.name": "schedulingbot",
                 #         "message": {
@@ -358,7 +358,7 @@ def reply():
             # else:
             #     data = {
             #         "channel": "whatsapp",
-            #         "source": "917834811114",
+            #         "source": "918583019562",
             #         "destination": f'{sender_number}',
             #         "src.name": "schedulingbot",
             #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Invalid Format","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Yes"}},{{"type":"text","title":"No"}}]}}'
@@ -369,31 +369,30 @@ def reply():
             #     user_stage[sender_number] = CONVERSATION_STAGES['VALIDATE_YES_NO']
         elif current_stage == CONVERSATION_STAGES['VALIDATE_SCHED_OR_OTHER']: 
             if data_dict['payload']['type'] == 'button_reply':
-                # print(data_dict['payload']['payload']['title'].lower())
-                # if data_dict['payload']['payload']['title'].lower() == 'schedule appointment':
-                    
-                #     data = {
-                #         "channel": "whatsapp",
-                #         "source": "917834811114",
-                #         "destination": f'{sender_number}',
-                #         "src.name": "schedulingbot",
-                #         'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
-                #     }
-                #     encoded_data = urllib.parse.urlencode(data)
-                #     user_stage[sender_number] = CONVERSATION_STAGES['DOCTOR']
-                # elif data_dict['payload']['payload']['title'].lower() == 'schedule for other':
-                # print(data_dict['payload']['payload']['title'].lower())
-                data = {
-                    'channel': 'whatsapp',
-                    'source': '917834811114',
-                    'destination': f'{sender_number}',
-                    'message': '{"type":"text","text":"Enter Name"}',
-                    'src.name': 'schedulingbot',
-                }
-                user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
-                encoded_data = urllib.parse.urlencode(data)
-                response = requests.post(
-                    url, data=encoded_data, headers=headers)
+                if data_dict['payload']['payload']['title'] == 'Talk to Clinic':
+                    data = {
+                        'channel': 'whatsapp',
+                        'source': '918583019562',
+                        'destination': f'{sender_number}',
+                        'message': '{"type": "text", "text": "You can reach us at +91-9560458562. Our friendly staff is ready to assist you with any questions or concerns you may have.\\n \\nThank you for contacting us! If theres anything else you need, dont hesitate to reach out. Have a wonderful day!"}',
+                        'src.name': 'schedulingbot'
+                    }
+                    encoded_data = urllib.parse.urlencode(data)
+                    response = requests.post(
+                        url, data=encoded_data, headers=headers)
+                    user_stage[sender_number] = CONVERSATION_STAGES['START']
+                else:     
+                    data = {
+                        'channel': 'whatsapp',
+                        'source': '918583019562',
+                        'destination': f'{sender_number}',
+                        'message': '{"type":"text","text":"What is the Patients name?"}',
+                        'src.name': 'schedulingbot',
+                    }
+                    user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
+                    encoded_data = urllib.parse.urlencode(data)
+                    response = requests.post(
+                        url, data=encoded_data, headers=headers)
                 
         elif current_stage == CONVERSATION_STAGES['ENTER_NAME']: 
             
@@ -414,10 +413,10 @@ def reply():
             # print(name_value)
             data = {
                 "channel": "whatsapp",
-                "source": "917834811114", 
+                "source": "918583019562", 
                 "destination": f'{sender_number}',
                 "src.name": "schedulingbot",
-                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
+                'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Where would you like to visit us?","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
             }
             encoded_data = urllib.parse.urlencode(data)
             response = requests.post(
@@ -433,9 +432,9 @@ def reply():
                 
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type": "list", "title": "Select Date", "body": "Click Main Menu", "globalButtons": [{"type": "text", "title": "Date Picker"}], "items": [{"title": "first Section", "subtitle": "first Subtitle", "options": []}]}',
+                    'message': '{"type": "list", "title": "No problem! Which appointment would you like to reschedule?", "body": "Please select an appointment", "globalButtons": [{"type": "text", "title": "Date Picker"}], "items": [{"title": "first Section", "subtitle": "first Subtitle", "options": []}]}',
                     'src.name': 'schedulingbot',
                 }
                 message_data = json.loads(data['message'])
@@ -454,25 +453,37 @@ def reply():
             elif data_dict['payload']['payload']['title'] == 'Schedule Appointment':
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type":"text","text":"Enter Name"}',
+                    'message': '{"type":"text","text":"What is the name of the patient?"}',
                     'src.name': 'schedulingbot',
                 }
                 user_stage[sender_number] = CONVERSATION_STAGES['ENTER_NAME']
                 encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
                     url, data=encoded_data, headers=headers)
+            else: 
+                data = {
+                    'channel': 'whatsapp',
+                    'source': '918583019562',
+                    'destination': f'{sender_number}',
+                    'message': '{"type": "text", "text": "You can reach us at +91-9560458562. Our friendly staff is ready to assist you with any questions or concerns you may have.\\n \\nThank you for contacting us! If theres anything else you need, dont hesitate to reach out. Have a wonderful day!"}',
+                    'src.name': 'schedulingbot'
+                }
+                encoded_data = urllib.parse.urlencode(data)
+                response = requests.post(
+                    url, data=encoded_data, headers=headers)
+                user_stage[sender_number] = CONVERSATION_STAGES['START']
 
                 
         elif current_stage == CONVERSATION_STAGES['LOCATION']:
             if data_dict['payload']['type'] == 'button_reply':
                 data = {
                     "channel": "whatsapp",
-                    "source": "917834811114",
+                    "source": "918583019562",
                     "destination": f'{sender_number}',
                     "src.name": "schedulingbot",
-                    'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select location","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
+                    'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Where would you like to visit us?","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Park St"}},{{"type":"text","title":"Lake View"}}]}}'
                 }
                 encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
@@ -497,10 +508,10 @@ def reply():
                 # print(user_responses[sender_number]['location'])
                 data = {
                     "channel": "whatsapp",
-                    "source": "917834811114",
+                    "source": "918583019562",
                     "destination": f'{sender_number}',
                     "src.name": "schedulingbot",
-                    'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Select the Doctor you want to visit","caption":"Select anyone of the options"}},"options":[{{"type":"text","title":"Dr Navin"}},{{"type":"text","title":"Dr abc"}}]}}'
+                    'message': f'{{"type":"quick_reply","content":{{"type":"text","text":"Which doctor would you like to see?","caption":"Please select the Dentist"}},"options":[{{"type":"text","title":"Dr Navin"}},{{"type":"text","title":"Dr abc"}}]}}'
                 }
                 encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
@@ -525,10 +536,10 @@ def reply():
                 # print(user_responses[sender_number]['doctor'])
                 data = {
                     "channel": "whatsapp",
-                    "source": "917834811114",
+                    "source": "918583019562",
                     "destination": f'{sender_number}',
                     "src.name": "schedulingbot",
-                    'message': '{"type":"list","title":"Select Ailment","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Main Menu"}],"items":[{"title":"Select Ailment","options":[{"type":"text","title":"Root Canal"},{"type":"text","title":"Regular Checkup"}]}]}'
+                    'message': '{"type":"list","title":"What is the reason for your visit?","body":"Please select your ailment","globalButtons":[{"type":"text","title":"Main Menu"}],"items":[{"title":"Select Ailment","options":[{"type":"text","title":"Root Canal"},{"type":"text","title":"Regular Checkup"}]}]}'
                 }
                 encoded_data = urllib.parse.urlencode(data)
                 response = requests.post(
@@ -555,9 +566,9 @@ def reply():
                 # print(user_responses[sender_number]['ailment'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type":"list","title":"Select Date","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
+                    'message': '{"type":"list","title":"When would you like to come in?","body":"Please select a date","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
                     'src.name': 'schedulingbot',
                 }
                 message_data = json.loads(data['message'])
@@ -596,7 +607,7 @@ def reply():
                 # elif data_dict['payload']['payload']['title'] == 'Talk to Clinic':
                 #     data = {
                 #         "channel": "whatsapp",
-                #         "source": "917834811114",
+                #         "source": "918583019562",
                 #         "destination": f'{sender_number}',
                 #         "src.name": "schedulingbot",
                 #         "message": {
@@ -627,9 +638,9 @@ def reply():
                 # print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type":"list","title":"Select Time","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
+                    'message': '{"type":"list","title":"What time suits you best?","body":"Please select the time slot","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
                     'src.name': 'schedulingbot',
                 }
 
@@ -670,12 +681,12 @@ def reply():
                                 for time_value in time_values_notbooked]
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
                     'message': json.dumps({
                         "type": "list",
-                        "title": "Select Time",
-                        "body": "Click Main Menu",
+                        "title": "What time suits you best?",
+                        "body": "Please select the time slot",
                         "globalButtons": [{"type": "text", "title": "Date Picker"}],
                         "items": [{"title": "first Section", "subtitle": "first Subtitle", "options": options_list}]
                     }),
@@ -716,9 +727,9 @@ def reply():
             #     print(user_responses[sender_number]['ailment'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type":"list","title":"Select Date to which you want to Reschedule to","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
+                    'message': '{"type":"list","title":"So, which date would be better?","body":"Please select new Date","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
                     'src.name': 'schedulingbot',
                 }
                 message_data = json.loads(data['message'])
@@ -755,7 +766,7 @@ def reply():
                 # elif data_dict['payload']['payload']['title'] == 'Talk to Clinic':
                 #     data = {
                 #         "channel": "whatsapp",
-                #         "source": "917834811114",
+                #         "source": "918583019562",
                 #         "destination": f'{sender_number}',
                 #         "src.name": "schedulingbot",
                 #         "message": {
@@ -785,9 +796,9 @@ def reply():
                 # print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
-                    'message': '{"type":"list","title":"Select Time","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
+                    'message': '{"type":"list","title":"And what new time works for you?","body":"Please select a new time","globalButtons":[{"type":"text","title":"Date Pciker"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[]}]}',
                     'src.name': 'schedulingbot',
                 }
 
@@ -828,12 +839,12 @@ def reply():
                                 for time_value in time_values_notbooked]
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
                     'message': json.dumps({
                         "type": "list",
-                        "title": "Select Time",
-                        "body": "Click Main Menu",
+                        "title": "And what new time works for you?",
+                        "body": "Please select a new time",
                         "globalButtons": [{"type": "text", "title": "Date Picker"}],
                         "items": [{"title": "first Section", "subtitle": "first Subtitle", "options": options_list}]
                     }),
@@ -864,7 +875,7 @@ def reply():
                 print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
                     'message': '{"type":"text","text":"Thanks for confirmation"}',
                     'src.name': 'schedulingbot',
@@ -880,7 +891,7 @@ def reply():
 
 
                 # Update the 'message' key in the data dictionary with the dynamic value
-                data['message'] = f'{{"type":"text","text":"Thanks for Booking an Appointment with us. Your appointment is schedules for: {dynamic_date} at {dynamic_time} with {doctor} at our {location} clinic for {ailment}"}}'
+                data['message'] = f'{{"type":"text","text":"Thanks for Booking an Appointment with us. Your appointment is scheduled for: {dynamic_date} at {dynamic_time} with {doctor} at our {location} clinic for {ailment}"}}'
 
                 # Parse the JSON message from the data dictionary
                 print(data)
@@ -992,7 +1003,7 @@ def reply():
                 print(data_dict['payload']['payload']['title'])
                 data = {
                     'channel': 'whatsapp',
-                    'source': '917834811114',
+                    'source': '918583019562',
                     'destination': f'{sender_number}',
                     'message': '{"type":"text","text":"Thanks for confirmation"}',
                     'src.name': 'schedulingbot',
@@ -1035,7 +1046,7 @@ def reply():
 
 
 
-        
+        # 917834811114
 
             
                 
@@ -1043,7 +1054,7 @@ def reply():
      
         # data = {
         #     'channel': 'whatsapp',
-        #     'source': '917834811114',
+        #     'source': '918583019562',
         #     'destination': '918777714983',
         #     'message': '{"type":"list","title":"XYZ STORE","body":"Click Main Menu","globalButtons":[{"type":"text","title":"Main Menu"}],"items":[{"title":"first Section","subtitle":"first Subtitle","options":[{"type":"text","title":"Book 1","description":"Book 1 description"},{"type":"text","title":"Book 2","description":"Book 2 description"}]},{"title":"second section","subtitle":"second Subtitle","options":[{"type":"text","title":"Book 3","description":"Book 3 description"},{"type":"text","title":"Book 4","description":"Book 4 description"}]}]}',
         #     'src.name': 'schedulingbot',
